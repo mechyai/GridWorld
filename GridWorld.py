@@ -1,78 +1,81 @@
-import numpy as np
-
-class GridWorld:
-    """
-    Generates rectangular map of Grid World via NumPy matrix with default and user-defined rewards, obstructions,
-    boundaries or ravines, and goals or trap terminal states, and more.
-    """
-    def __init__(self, x_size: int = 5, y_size: int = 5, perimeter: str = 'boundary') -> None:
-        """
-        Constructor for useless rectangular map of Grid World. Extra features must be added specifically after by user.
-
-        For Reset Layer - a 0 value at index means do not reset at indexed state, a 1 does mean reset
-        For Reward Layer - an int value at index refers to reward value at indexed state
-        For Path Layer - a 0 value at index means then agent cannot be at  indexed state, a 1 means it can
-        For Action Layer - a 4-bit binary value at index refers to {UP,DOWN,LEFT,RIGHT} actions available to agent at
-                            indexed state
-        :param x_size: (int > 4) horizontal dimension of map (relates to rows of map matrix)
-        :param y_size: (int > 4) vertical dimension of map (relates to columns of map matrix)
-        :param perimeter: (str) 'boundary' input refers to a perimeter the agent cannot pass onto w/o eps. termination
-                                'ravine' input refers to perimeter agent can pass onto w/ eps. termination
-        """
-        self.map_shape = (x_size+2, y_size+2)  # +2 accounts for perimeter on all sides
-        self.x_map = x_size
-        self.y_map = y_size
-        self.perimeter = perimeter
-        self.reset_mtrx = self.__initialize_reset_mtrx()
-        self.reward_mtrx = self.__init_mtrx(0)  # 0 -> initialize 0 reward for all states
-        self.path_mtrx = self.__init_mtrx(1)  # 1 -> initialize path state for all states
-        self.action_mtrx = np.full(self.map_shape, 1111)  # 1111 -> initialize all actions (U,D,L,R) for all states
-        self.id_mtrx = np.empty(self.map_shape)
-
-    def __padding(self, mtrx: np.array, pad_val: int):
-        """
-        Class helper function to create single layer of padding for a given value around a given matrix.
-
-        :param mtrx: (np.ndarray) matrix to have padding added
-        :param pad_val: (int) single value used for padding
-        """
-        mtrx[0, :] = pad_val  # top padding
-        mtrx[-1, :] = pad_val  # bottom padding
-        mtrx[:, 0] = pad_val  # left padding
-        mtrx[:, -1] = pad_val  # right padding
-
-    def __init_mtrx(self, init_val: int = 0) -> np.ndarray:
-        """
-        Class helper function to create basic map matrix.
-
-        :param init_val: (int 0,1) 0 will create matrix of zeros. 1 will create matrix of ones.
-        :return: (np.ndarray) new generic matrix of either zeros or ones
-        """
-        if init_val is 0:
-            mtrx = np.zeros(self.map_shape)
-        elif init_val is 1:
-            mtrx = np.ones(self.map_shape)
-        else:
-            mtrx = self.__init_mtrx(0)
-            raise ValueError('Argument input must be 1 or 0, program default to 0')
-        return mtrx
-
-    def __initialize_reset_mtrx(self) -> np.ndarray:
-        """
-        Creates initial Reset Layer of Grid World. Includes perimeter (boundary or ravine) and adjusts Path Layer
-        accordingly.
-        :return: (np.ndarray) initialized Reset Matrix
-        """
-        rst_mtrx = self.__init_mtrx(0)
-        if self.perimeter is 'boundary':
-            self.__padding(self.path_mtrx, 0)  # agent cannot pass onto perimeter
-        elif self.perimeter is 'ravine':
-            self.__padding(rst_mtrx, 1)  # agent does reset with perimeter interaction
-        return rst_mtrx
+import GridMap as gm
 
 
+# ----------------------------------- GridWorld Environment Creation -----------------------------------
+map = gm.GridMap(4, 3)
+# set -1 reward for each step
+map.set_const_reward(-1)
+border_reward_distr = (0, 0)
+# set non-interactive border wall with 0 reward
+map.set_border('W', border_reward_distr)
+# set all states path states, initialize all states to defualt
+path_reward_distr = (0, 0)
+map.set_state([], 'P', path_reward_distr)
+print('Init Map')
+# set wall at (2,2)
+map.set_state([(2, 2)], 'W', (0, 0))
+print('Set 1 Wall')
+# set goal at (4,3)
+map.set_state([(4, 3)], 'G', (10, 0))
+print('Set 1 Goal')
+# set ditch at (4,2)
+map.set_state([(4, 2)], 'D', (-10, 0))
+print('Set 1 Ditch')
+# set start state at (1,1)
+map.set_state([(1, 1)], 'S', (0, 0))
+print('Set 1 Start')
 
+# ----------------------------------- Q2(a) -----------------------------------
+action_set = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+gamma = 1  # discount factor
+# initialize values
+map.initialize_value(0)
+# get first state
+init_state = map.initialize_state()
+print(f'Start State Location {init_state.loc}')
+threshold = 0.00001
+delta = threshold + 1  # to enter while loop always
+i = 0
+while delta > threshold:
+    delta = 0
+    for path_state in map.path_states:
+        v = map.get_value(path_state)
+        temp_val = 0
+        for action in action_set:
+            # print(f'State Location {map_state.loc}')
+            new_state = map.return_state(path_state, action)
+            state_return = map.get_reward(new_state) + gamma * map.get_value(new_state)
+            temp_val += 1 / len(action_set) * state_return
+        map.set_value(path_state, temp_val)
+        delta = max(delta, abs(v - temp_val))
+    i += 1
+    print(f'Policy Evaluation Iteration [{i}]')
+    map.print_data('value')
 
-
-
+# ----------------------------------- Q2(b) -----------------------------------
+action_set = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+gamma = 1  # discount factor
+# initialize values
+map.initialize_value(0)
+# get first state
+init_state = map.initialize_state()
+print(f'Start State Location {init_state.loc}')
+threshold = 0.01
+delta = threshold + 1  # to enter while loop always
+i = 0
+while delta > threshold:
+    delta = 0
+    for path_state in reversed(map.path_states):  # reverse order iteration
+        v = map.get_value(path_state)
+        temp_val = 0
+        for action in action_set:
+            # print(f'State Location {map_state.loc}')
+            new_state = map.return_state(path_state, action)
+            state_return = map.get_reward(new_state) + gamma * map.get_value(new_state)
+            temp_val += 1 / len(action_set) * state_return
+        map.set_value(path_state, temp_val)
+        delta = max(delta, abs(v - temp_val))
+    i += 1
+    print(f'Policy Evaluation Iteration [{i}]')
+    map.print_data('value')
 
